@@ -15,10 +15,11 @@ type Node struct {
 	TTL   int
 
 	id       string
-	ntype    NodeType
 	protocol int
 	master   bool
 	meta     map[string]interface{}
+
+	// TODO 需要有一个节点失效的状态，状态失效需要比 lease 过期早
 }
 
 func NewNode(index int, name string, ttl int) *Node {
@@ -81,5 +82,6 @@ func (n *Node) Deregister(ctx context.Context) error {
 	panic("implement me")
 }
 func (n *Node) Watch(ctx context.Context, key string) error {
+	// TODO 需要 watch 所有 master 节点，并在本地缓存所有 master 节点，后面需要按照节点 index hash 分组将请求打散到所有节点
 	panic("implement me")
 }
