@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
@@ -45,7 +46,7 @@ func (n *Node) Register(ctx context.Context) error {
 			select {
 			case <-ticker.C:
 				if n.master {
-					fmt.Printf("node:%s is master\n", n.id)
+					log.Printf("node:%s is master\n", n.id)
 				}
 			}
 		}
@@ -63,13 +64,13 @@ func (n *Node) campaign(ctx context.Context, c *clientv3.Client) {
 	for {
 		s, err := concurrency.NewSession(c, concurrency.WithTTL(ttl))
 		if err != nil {
-			fmt.Println("NewSession err: ", err)
+			log.Println("NewSession err: ", err)
 			continue
 		}
 		e := concurrency.NewElection(s, prefix)
 
 		if err = e.Campaign(context.Background(), val); err != nil {
-			fmt.Println("Campaign err: ", err)
+			log.Println("Campaign err: ", err)
 			continue
 		}
 
@@ -99,55 +100,61 @@ func (n *Node) campaign0(ctx context.Context, c *clientv3.Client) (err error) {
 
 	var (
 		key = fmt.Sprintf(NodeEtcdPrefix, n.Index)
-		val = fmt.Sprintf("nodeId:%s,nodeName%s,leaseId:%x", n.id, n.Name, leaseID)
+		val = fmt.Sprintf("nodeId:%s,nodeName:%s,leaseId:%x", n.id, n.Name, leaseID)
 	)
 
-	txn := c.Txn(ctx)
-	txn = txn.If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
-		Then(clientv3.OpPut(key, val, clientv3.WithLease(leaseID))).
-		Else(clientv3.OpGet(key))
+	var txnResp *clientv3.TxnResponse
 
-	resp, err := txn.Commit()
-	if err != nil {
-		return err
+	for {
+		log.Println("开始抢主", n.Index, n.id)
+		txn := c.Txn(ctx)
+		txn = txn.If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+			Then(clientv3.OpPut(key, val, clientv3.WithLease(leaseID))).
+			Else(clientv3.OpGet(key))
+
+		txnResp, err = txn.Commit()
+		if err != nil {
+			return err
+		}
+		if !txnResp.Succeeded {
+			kv := txnResp.Responses[0].GetResponseRange().Kvs[0]
+			if string(kv.Value) != val {
+				// 不相等，说明当前节点已经不是主节点
+				time.Sleep(time.Second)
+				continue
+			}
+		} else {
+			break
+		}
 	}
 
-	if !resp.Succeeded {
-		kv := resp.Responses[0].GetResponseRange().Kvs[0]
-		if string(kv.Value) != val {
-			// 不相等，说明当前节点已经不是主节点
-			for {
-				time.Sleep(time.Second)
-
-			}
-		}
-	} else {
-		// 说明抢到主节点
-		go func() {
-			for {
-				select {
-				case <-time.After(time.Duration(n.TTL-1) * time.Second):
-					fmt.Println("节点失效，将 master 状态置为 false", n.Index, n.id)
-					// 节点TTL即将过期，提前1秒设置失效状态，停止接收请求
-					n.master = false // TODO atomic modify
-					break
-				case <-keepaliveSuccessChan:
-					// 接收到 keepalive success 信号，重新开始计时
-				}
-			}
-		}()
+	// 说明抢到主节点
+	log.Println("抢主成功", n.Index, n.id)
+	go func() {
 		for {
 			select {
-			case kaResp := <-keepaliveRespChan:
-				if kaResp != nil {
-					fmt.Println("keepalive success: ", kaResp.ID)
-					keepaliveSuccessChan <- struct{}{}
-				} else {
-					fmt.Println("keepalive fail")
-				}
+			case <-time.After(time.Duration(n.TTL-1) * time.Second):
+				log.Println("节点失效，将 master 状态置为 false", n.Index, n.id)
+				// 节点TTL即将过期，提前1秒设置失效状态，停止接收请求
+				n.master = false // TODO atomic modify
+				break
+			case <-keepaliveSuccessChan:
+				// 接收到 keepalive success 信号，重新开始计时
 			}
 		}
+		// TODO 缺少退出信号
+	}()
+
+	for kaResp := range keepaliveRespChan {
+		if kaResp != nil {
+			log.Println("keepalive success: ", kaResp.ID)
+			keepaliveSuccessChan <- struct{}{}
+		} else {
+			log.Println("keepalive fail")
+		}
 	}
+	log.Println("keepalive chan closed")
+
 	return nil
 }
 
