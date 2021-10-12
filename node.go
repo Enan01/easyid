@@ -16,7 +16,7 @@ const (
 type Node struct {
 	Index int // 表示节点ID,注册到etcd中拼接在前缀中
 	Name  string
-	TTL   int
+	TTL   int64
 
 	id       string
 	protocol int
@@ -26,7 +26,7 @@ type Node struct {
 	// TODO 需要有一个节点失效的状态，状态失效需要比 lease 过期早
 }
 
-func NewNode(index int, name string, ttl int) *Node {
+func NewNode(index int, name string, ttl int64) *Node {
 	return &Node{
 		Index: index,
 		Name:  name,
@@ -37,7 +37,7 @@ func NewNode(index int, name string, ttl int) *Node {
 }
 
 func (n *Node) Register(ctx context.Context) error {
-	go n.campaign(etcdCli)
+	go n.campaign0(ctx, etcdCli)
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -53,9 +53,9 @@ func (n *Node) Register(ctx context.Context) error {
 	return nil
 }
 
-func (n *Node) campaign(c *clientv3.Client) {
+func (n *Node) campaign(ctx context.Context, c *clientv3.Client) {
 	var (
-		ttl    = n.TTL
+		ttl    = int(n.TTL)
 		prefix = fmt.Sprintf("/easyid/node/master/%d", n.Index)
 		val    = fmt.Sprintf("%s:%s", n.id, n.Name)
 	)
@@ -82,19 +82,25 @@ func (n *Node) campaign(c *clientv3.Client) {
 	}
 }
 
-func (n *Node) compaign0(ctx context.Context, c *clientv3.Client) (err error) {
-	leaseResp, err := c.Lease.Grant(ctx, int64(n.TTL))
+func (n *Node) campaign0(ctx context.Context, c *clientv3.Client) (err error) {
+	leaseClient := clientv3.NewLease(c)
+	leaseResp, err := leaseClient.Grant(ctx, n.TTL)
 	if err != nil {
 		return err
 	}
 	leaseID := leaseResp.ID
 
+	keepaliveRespChan, err := leaseClient.KeepAlive(ctx, leaseID)
+	if err != nil {
+		return err
+	}
+
+	keepaliveSuccessChan := make(chan struct{})
+
 	var (
 		key = fmt.Sprintf(NodeEtcdPrefix, n.Index)
 		val = fmt.Sprintf("nodeId:%s,nodeName%s,leaseId:%x", n.id, n.Name, leaseID)
 	)
-
-	// create lease
 
 	txn := c.Txn(ctx)
 	txn = txn.If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
@@ -107,57 +113,43 @@ func (n *Node) compaign0(ctx context.Context, c *clientv3.Client) (err error) {
 	}
 
 	if !resp.Succeeded {
-		return fmt.Errorf("txn commit fail")
-	}
-
-	// TODO
-	return nil
-}
-
-/**
-// Campaign puts a value as eligible for the election. It blocks until
-// it is elected, an error occurs, or the context is cancelled.
-func (e *Election) Campaign(ctx context.Context, val string) error {
-	s := e.session
-	client := e.session.Client()
-
-	k := fmt.Sprintf("%s%x", e.keyPrefix, s.Lease())
-	txn := client.Txn(ctx).If(v3.Compare(v3.CreateRevision(k), "=", 0))
-	txn = txn.Then(v3.OpPut(k, val, v3.WithLease(s.Lease())))
-	txn = txn.Else(v3.OpGet(k))
-	resp, err := txn.Commit()
-	if err != nil {
-		return err
-	}
-	e.leaderKey, e.leaderRev, e.leaderSession = k, resp.Header.Revision, s
-	if !resp.Succeeded {
 		kv := resp.Responses[0].GetResponseRange().Kvs[0]
-		e.leaderRev = kv.CreateRevision
 		if string(kv.Value) != val {
-			if err = e.Proclaim(ctx, val); err != nil {
-				e.Resign(ctx)
-				return err
+			// 不相等，说明当前节点已经不是主节点
+			for {
+				time.Sleep(time.Second)
+
+			}
+		}
+	} else {
+		// 说明抢到主节点
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Duration(n.TTL-1) * time.Second):
+					fmt.Println("节点失效，将 master 状态置为 false", n.Index, n.id)
+					// 节点TTL即将过期，提前1秒设置失效状态，停止接收请求
+					n.master = false // TODO atomic modify
+					break
+				case <-keepaliveSuccessChan:
+					// 接收到 keepalive success 信号，重新开始计时
+				}
+			}
+		}()
+		for {
+			select {
+			case kaResp := <-keepaliveRespChan:
+				if kaResp != nil {
+					fmt.Println("keepalive success: ", kaResp.ID)
+					keepaliveSuccessChan <- struct{}{}
+				} else {
+					fmt.Println("keepalive fail")
+				}
 			}
 		}
 	}
-
-	_, err = waitDeletes(ctx, client, e.keyPrefix, e.leaderRev-1)
-	if err != nil {
-		// clean up in case of context cancel
-		select {
-		case <-ctx.Done():
-			e.Resign(client.Ctx())
-		default:
-			e.leaderSession = nil
-		}
-		return err
-	}
-	e.hdr = resp.Header
-
 	return nil
 }
-
-*/
 
 func (n *Node) Deregister(ctx context.Context) error {
 	panic("implement me")
