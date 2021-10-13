@@ -10,6 +10,8 @@ import (
 	"github.com/coreos/etcd/clientv3/concurrency"
 )
 
+// TODO 优化代码结构
+
 const (
 	NodeEtcdPrefix = "/easyid/node/master/%d" // %d should be format to `Node.Index`
 )
