@@ -21,11 +21,14 @@ func init() {
 func main() {
 	flag.Parse()
 
-	node := NewNode(nodeIndex, nodeName, 30)
+	ctx := context.Background()
+	node := NewNode(nodeIndex, nodeName, 30, etcdCli)
 
-	node.Register(context.Background())
+	node.Register(ctx)
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	<-sigc
+
+	node.Release(ctx)
 }
