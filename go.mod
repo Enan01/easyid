@@ -25,4 +25,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
-replace github.com/coreos/bbolt => go.etcd.io/bbolt v1.3.6
+//replace github.com/coreos/bbolt => go.etcd.io/bbolt v1.3.6

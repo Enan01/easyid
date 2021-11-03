@@ -114,18 +114,18 @@ func (n *Node) campaign0(ctx context.Context) (err error) {
 	log.Printf("节点{index:%d, id:%s} 抢主成功\n", n.Index, n.id)
 
 	go func() {
+	LOOP:
 		for {
 			select {
 			case <-time.After(time.Duration(n.TTL-1) * time.Second):
 				log.Printf("节点{index:%d, id:%s} keepalive 超时\n", n.Index, n.id)
 				// 节点TTL即将过期，提前1秒设置失效状态，停止接收请求
 				n.SetMaster(false)
-				break
-			case <-keepaliveSuccessChan:
-				// 接收到 keepalive success 信号，重新开始计时
+				break LOOP
+			case <-keepaliveSuccessChan: // 接收到 keepalive success 信号，重新开始计时
 			case <-n.releaseCh:
 				log.Printf("节点{index:%d, id:%s} 接收到 release 信号，退出 keepalive goroutine\n", n.Index, n.id)
-				break
+				break LOOP
 			}
 		}
 	}()
