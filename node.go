@@ -188,22 +188,6 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 	log.Printf("节点{index:%d, id:%s} 结束 watcher", n.Index, n.id)
 	// TODO 需要 watch 所有 master 节点，并在本地缓存所有 master 节点，后面需要按照节点 index hash 分组将请求打散到所有节点
 	return nil
-
-	/**
-	// 先GET到当前的值，并监听后续变化
-	    if getResp, err = kv.Get(context.TODO(), "/cron/jobs/job7"); err != nil {
-	        fmt.Println(err)
-	        return
-	    }
-
-	    // 现在key是存在的
-	    if len(getResp.Kvs) != 0 {
-	        fmt.Println("当前值:", string(getResp.Kvs[0].Value))
-	    }
-
-	    // 当前etcd集群事务ID, 单调递增的（监听/cron/jobs/job7后续的变化,也就是通过监听版本变化）
-	    watchStartRevision = getResp.Header.Revision + 1
-	*/
 }
 
 func (n *Node) Release(ctx context.Context) error {
