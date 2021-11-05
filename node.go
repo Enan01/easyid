@@ -7,12 +7,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/etcd/mvcc/mvccpb"
+
 	"github.com/coreos/etcd/clientv3"
 )
 
 const (
-	NodeEtcdPrefix = "/easyid/node/master/%d" // %d should be format to `Node.Index`
+	MasterNodeEtcdPrefix = "/easyid/node/master" // %d should be format to `Node.Index`
 )
+
+// TODO 抽象节点序列化信息
+var AllMasterNodes = make(map[string]string)
+
+// TODO 节点 value 需要包含 ip, port，转发请求的时候需要用到，每个 node 会维护其他 node 的 client 连接池
 
 type Node struct {
 	Index int // 表示节点ID,注册到etcd中拼接在前缀中
@@ -80,7 +87,7 @@ func (n *Node) campaign0(ctx context.Context) (err error) {
 	keepaliveSuccessChan := make(chan struct{})
 
 	var (
-		key = fmt.Sprintf(NodeEtcdPrefix, n.Index)
+		key = fmt.Sprintf(MasterNodeEtcdPrefix+"/%d", n.Index)
 		val = fmt.Sprintf("nodeId:%s,nodeName:%s,leaseId:%x", n.id, n.Name, leaseID)
 	)
 
@@ -147,9 +154,56 @@ func (n *Node) Deregister(ctx context.Context) error {
 	panic("implement me")
 }
 
-func (n *Node) Watch(ctx context.Context, key string) error {
+// TODO 如何能够获取到所有的变更事件？后一个启动的节点无法感知到之前的节点
+func (n *Node) WatchMaster(ctx context.Context) error {
+	getResp, err := n.etcdCli.Get(ctx, MasterNodeEtcdPrefix, clientv3.WithPrefix())
+	if err != nil {
+		log.Printf("err: %s", err)
+		return err
+	}
+	if len(getResp.Kvs) != 0 {
+		for _, kv := range getResp.Kvs {
+			AllMasterNodes[string(kv.Key)] = string(kv.Value)
+		}
+		log.Printf("当前值：%v", AllMasterNodes)
+	}
+
+	watchStartRevision := getResp.Header.Revision + 1
+
+	wch := n.etcdCli.Watch(ctx, MasterNodeEtcdPrefix, clientv3.WithPrefix(), clientv3.WithRev(watchStartRevision))
+	for wresp := range wch {
+		for _, ev := range wresp.Events {
+			kbs, vbs := ev.Kv.Key, ev.Kv.Value
+			switch ev.Type {
+			case mvccpb.PUT:
+				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} PUT: %s", n.Index, n.id, string(kbs), string(vbs))
+				AllMasterNodes[string(kbs)] = string(vbs)
+			case mvccpb.DELETE:
+				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} DELETE", n.Index, n.id, string(kbs))
+				delete(AllMasterNodes, string(kbs))
+			}
+			log.Printf("当前值：%v", AllMasterNodes)
+		}
+	}
+	log.Printf("节点{index:%d, id:%s} 结束 watcher", n.Index, n.id)
 	// TODO 需要 watch 所有 master 节点，并在本地缓存所有 master 节点，后面需要按照节点 index hash 分组将请求打散到所有节点
-	panic("implement me")
+	return nil
+
+	/**
+	// 先GET到当前的值，并监听后续变化
+	    if getResp, err = kv.Get(context.TODO(), "/cron/jobs/job7"); err != nil {
+	        fmt.Println(err)
+	        return
+	    }
+
+	    // 现在key是存在的
+	    if len(getResp.Kvs) != 0 {
+	        fmt.Println("当前值:", string(getResp.Kvs[0].Value))
+	    }
+
+	    // 当前etcd集群事务ID, 单调递增的（监听/cron/jobs/job7后续的变化,也就是通过监听版本变化）
+	    watchStartRevision = getResp.Header.Revision + 1
+	*/
 }
 
 func (n *Node) Release(ctx context.Context) error {

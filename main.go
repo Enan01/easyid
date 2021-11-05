@@ -20,15 +20,17 @@ func init() {
 
 func main() {
 	flag.Parse()
-
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	node := NewNode(nodeIndex, nodeName, 30, etcdCli)
 
 	node.Register(ctx)
+	go node.WatchMaster(ctx)
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	<-sigc
+
+	cancel()
 
 	node.Release(ctx)
 }
