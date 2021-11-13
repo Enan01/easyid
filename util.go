@@ -17,7 +17,7 @@ func (b *AtomicBool) Set(value bool) {
 	if value {
 		i = 1
 	}
-	atomic.StoreInt32(&(b.flag), int32(i))
+	atomic.StoreInt32(&(b.flag), i)
 }
 
 func (b *AtomicBool) Get() bool {

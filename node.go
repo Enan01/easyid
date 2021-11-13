@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/coreos/etcd/mvcc/mvccpb"
@@ -26,14 +25,13 @@ type Node struct {
 	Name  string
 	TTL   int64
 
-	id         string
-	protocol   int
-	masterLock sync.RWMutex
-	master     bool // 主节点标识
-	meta       map[string]interface{}
-	etcdCli    *clientv3.Client
-	releaseCh  chan struct{}
-	leaseID    clientv3.LeaseID
+	id        string
+	protocol  int
+	master    *AtomicBool // 主节点标识
+	meta      map[string]interface{}
+	etcdCli   *clientv3.Client
+	releaseCh chan struct{}
+	leaseID   clientv3.LeaseID
 }
 
 func NewNode(index int, name string, ttl int64, etcdCli *clientv3.Client) *Node {
@@ -44,7 +42,7 @@ func NewNode(index int, name string, ttl int64, etcdCli *clientv3.Client) *Node 
 		id:        UUID(),
 		meta:      make(map[string]interface{}),
 		releaseCh: make(chan struct{}),
-		master:    false,
+		master:    &AtomicBool{flag: 0},
 		etcdCli:   etcdCli,
 	}
 }
@@ -198,15 +196,9 @@ func (n *Node) Release(ctx context.Context) error {
 }
 
 func (n *Node) GetMaster() bool {
-	var _master bool
-	n.masterLock.RLock()
-	_master = n.master
-	n.masterLock.RUnlock()
-	return _master
+	return n.master.Get()
 }
 
 func (n *Node) SetMaster(master bool) {
-	n.masterLock.Lock()
-	n.master = master
-	n.masterLock.Unlock()
+	n.master.Set(master)
 }
