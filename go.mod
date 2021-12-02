@@ -16,6 +16,7 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway v1.14.5 // indirect
+	github.com/json-iterator/go v1.1.12
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect

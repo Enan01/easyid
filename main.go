@@ -20,8 +20,8 @@ func init() {
 
 func main() {
 	flag.Parse()
-	ctx, cancel := context.WithCancel(context.Background())
-	node := NewNode(nodeIndex, nodeName, 30, etcdCli)
+	ctx := context.Background()
+	node := NewNode(nodeIndex, nodeName, 30, "127.0.0.1", "9527", etcdCli)
 
 	node.Register(ctx)
 	go node.WatchMaster(ctx)
@@ -29,8 +29,6 @@ func main() {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	<-sigc
-
-	cancel()
 
 	node.Release(ctx)
 }
