@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coreos/etcd/mvcc/mvccpb"
@@ -16,7 +18,7 @@ const (
 	MasterNodeEtcdPrefix = "/easyid/node/master" // %d should be format to `Node.Index`
 )
 
-var AllMasterNodes = make(map[string]Node)
+var AllMasterNodes = make(map[int]Node) // key: node index, val: node value json
 
 // TODO 节点 value 需要包含 ip, port，转发请求的时候需要用到，每个 node 会维护其他 node 的 client 连接池
 
@@ -168,7 +170,7 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 		for _, kv := range getResp.Kvs {
 			nodeIns := Node{}
 			_ = jsoniter.Unmarshal(kv.Value, &nodeIns)
-			AllMasterNodes[string(kv.Key)] = nodeIns
+			AllMasterNodes[nodeIns.Index] = nodeIns
 		}
 		log.Printf("当前值：%v", AllMasterNodes)
 	}
@@ -185,16 +187,17 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 				nodeIns := Node{}
 				_ = jsoniter.Unmarshal(vbs, &nodeIns)
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} PUT: %s", n.Index, n.ID, string(kbs), string(vbs))
-				AllMasterNodes[string(kbs)] = nodeIns
+				AllMasterNodes[nodeIns.Index] = nodeIns
 			case mvccpb.DELETE:
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} DELETE", n.Index, n.ID, string(kbs))
-				delete(AllMasterNodes, string(kbs))
+				key := string(kbs)
+				index, _ := strconv.Atoi(key[strings.LastIndex(key, "/")+1:])
+				delete(AllMasterNodes, index)
 			}
 			log.Printf("当前值：%v", AllMasterNodes)
 		}
 	}
 	log.Printf("节点{index:%d, id:%s} 结束 watcher", n.Index, n.ID)
-	// TODO 需要 watch 所有 master 节点，并在本地缓存所有 master 节点，后面需要按照节点 index hash 分组将请求打散到所有节点
 	return nil
 }
 
