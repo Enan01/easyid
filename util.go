@@ -26,3 +26,10 @@ func (b *AtomicBool) Get() bool {
 	}
 	return false
 }
+
+type AtomicUint struct{ i uint64 }
+
+func (i *AtomicUint) Incr() uint64 {
+	atomic.AddUint64(&(i.i), 1)
+	return i.i
+}

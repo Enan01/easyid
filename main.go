@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,6 +26,11 @@ func main() {
 
 	node.Register(ctx)
 	go node.WatchMaster(ctx)
+
+	userIdGen := NewUserIDGenerator(ctx, 10086)
+	for i := 0; i < 2001; i++ {
+		log.Printf("userIdGen[%d] next id: %d", userIdGen.UserId, userIdGen.Next(ctx))
+	}
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
