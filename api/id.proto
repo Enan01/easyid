@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "./api";
+
+service IdGenerator {
+    rpc Next(UserId) returns (ID) {}
+}
+
+message UserId {
+    uint64 userId = 1;
+}
+message ID {
+    uint64 id = 1;
+}

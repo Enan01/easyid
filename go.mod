@@ -13,7 +13,7 @@ require (
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/envoyproxy/go-control-plane v0.9.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.3.2
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway v1.14.5 // indirect
 	github.com/json-iterator/go v1.1.12
@@ -22,8 +22,8 @@ require (
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
 	golang.org/x/text v0.3.5 // indirect
 	golang.org/x/tools v0.1.5 // indirect
-	google.golang.org/grpc v1.26.0 // indirect
-	google.golang.org/protobuf v1.27.1 // indirect
+	google.golang.org/grpc v1.26.0
+	google.golang.org/protobuf v1.26.0-rc.1 // indirect
 )
 
 //replace github.com/coreos/bbolt => go.etcd.io/bbolt v1.3.6

@@ -20,7 +20,7 @@ const (
 
 var AllMasterNodes = make(map[int]Node) // key: node index, val: node value json
 
-// TODO 节点 value 需要包含 ip, port，转发请求的时候需要用到，每个 node 会维护其他 node 的 client 连接池
+// TODO 每个 node 会维护其他 node 的 client 连接池
 
 type Node struct {
 	ID    string `json:"id,omitempty"`
