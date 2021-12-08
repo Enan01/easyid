@@ -72,6 +72,7 @@ func grpcServerStart(port string) {
 	}
 }
 
+// TODO http server 优化
 func httpServerStart() {
 	http.HandleFunc("/id-gen", func(w http.ResponseWriter, r *http.Request) {
 		vars := r.URL.Query()

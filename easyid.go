@@ -102,6 +102,7 @@ func (gs *UserIDGenerators) GetByUserId(ctx context.Context, userId uint64) *Use
 	return _gen
 }
 
+// TODO 支持批量获取
 func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, error) {
 	res := make(map[uint64]uint64, len(userIds))
 	for _, uid := range userIds {
