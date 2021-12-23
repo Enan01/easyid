@@ -102,19 +102,40 @@ func (gs *UserIDGenerators) GetByUserId(ctx context.Context, userId uint64) *Use
 	return _gen
 }
 
-// TODO 支持批量获取
 func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, error) {
 	res := make(map[uint64]uint64, len(userIds))
+	var (
+		uidGroup0 []uint64
+		uidGroup1 []uint64
+		uidGroup2 []uint64
+	)
+	// 用户ID分组
 	for _, uid := range userIds {
 		idx := uid % 3
-		if idx == uint64(nodeIndex) {
-			id, err := LocalIDGenerators.GetByUserId(ctx, uid).Next(ctx)
-			if err != nil {
-				return nil, err
+		switch idx {
+		case 0:
+			uidGroup0 = append(uidGroup0, uid)
+		case 1:
+			uidGroup1 = append(uidGroup1, uid)
+		case 2:
+			uidGroup2 = append(uidGroup2, uid)
+		}
+	}
+
+	nextIds := func(ctx context.Context, ni int, userIds []uint64) (map[uint64]uint64, error) {
+		ids := make(map[uint64]uint64)
+		if ni == nodeIndex { // 本地获取
+			log.Printf("节点[%d] 用户id[%v]本地获取", ni, userIds)
+			for _, uid := range userIds {
+				id, err := LocalIDGenerators.GetByUserId(ctx, uid).Next(ctx)
+				if err != nil {
+					return nil, err
+				}
+				ids[uid] = id
 			}
-			res[uid] = id
-		} else {
-			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", AllMasterNodes[int(idx)].IP, AllMasterNodes[int(idx)].Port), grpc.WithInsecure())
+		} else { // rpc获取
+			log.Printf("节点[%d] 用户id[%v]rpc获取", ni, userIds)
+			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", AllMasterNodes[ni].IP, AllMasterNodes[ni].Port), grpc.WithInsecure())
 			if err != nil {
 				return nil, err
 			}
@@ -122,12 +143,36 @@ func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, er
 			c := api.NewIdGeneratorClient(conn)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			r, err := c.Next(ctx, &api.UserId{UserId: uid})
+			r, err := c.NextByUserIds(ctx, &api.UserIds{UserIds: userIds})
 			if err != nil {
 				return nil, err
 			}
-			res[uid] = r.GetId()
+			ids = r.GetIds()
 		}
+		return ids, nil
+	}
+
+	ids0, err := nextIds(ctx, 0, uidGroup0)
+	if err != nil {
+		return nil, err
+	}
+	ids1, err := nextIds(ctx, 1, uidGroup1)
+	if err != nil {
+		return nil, err
+	}
+	ids2, err := nextIds(ctx, 2, uidGroup2)
+	if err != nil {
+		return nil, err
+	}
+
+	for uid, id := range ids0 {
+		res[uid] = id
+	}
+	for uid, id := range ids1 {
+		res[uid] = id
+	}
+	for uid, id := range ids2 {
+		res[uid] = id
 	}
 	return res, nil
 }
