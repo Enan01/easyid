@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"syscall"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/valyala/fasthttp"
 
 	"github.com/Enan01/easyid/api"
 
@@ -72,30 +72,50 @@ func grpcServerStart(port string) {
 	}
 }
 
-// TODO http server 优化
-func httpServerStart() {
-	http.HandleFunc("/id-gen", func(w http.ResponseWriter, r *http.Request) {
-		vars := r.URL.Query()
-		userIdStr := vars["userIds"][0]
-		userStrIds := strings.Split(userIdStr, ",")
+func idGenHandleFunc(ctx *fasthttp.RequestCtx) {
+	userIdStr := string(ctx.URI().QueryArgs().Peek("userIds"))
+	if userIdStr == "" {
+		ctx.Error("param invalid", fasthttp.StatusBadRequest)
+		return
+	}
 
-		var userIds []uint64
-		for _, uid := range userStrIds {
-			_uid, _ := strconv.ParseUint(uid, 10, 64)
-			userIds = append(userIds, _uid)
-		}
-		res, err := NextByUserIds(context.Background(), userIds)
+	userStrIds := strings.Split(userIdStr, ",")
+
+	var userIds []uint64
+	for _, uid := range userStrIds {
+		_uid, err := strconv.ParseUint(uid, 10, 64)
 		if err != nil {
-			log.Printf("/id-gen cause err: %s", err)
-			w.WriteHeader(500)
-			w.Write([]byte("fail"))
+			ctx.Error(fmt.Sprintf("param invalid: %s", err), fasthttp.StatusBadRequest)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		js, _ := jsoniter.MarshalToString(res)
-		w.Write([]byte(js))
-	})
-	if err := http.ListenAndServe(":"+httpPort, nil); err != nil {
-		log.Fatalf("http server start fail: %s", err)
+		userIds = append(userIds, _uid)
+	}
+
+	res, err := NextByUserIds(context.Background(), userIds)
+	if err != nil {
+		log.Printf("id-gen cause err: %s", err)
+		ctx.Error("id gen fail", fasthttp.StatusInternalServerError)
+		return
+	}
+
+	body, _ := jsoniter.MarshalToString(res)
+	ctx.Response.Header.Set("Content-Type", "application/json;charset=uft-8")
+	ctx.Response.SetBodyString(body)
+}
+
+func httpServerStart() {
+	m := func(ctx *fasthttp.RequestCtx) {
+		switch string(ctx.Path()) {
+		case "/id-gen":
+			idGenHandleFunc(ctx)
+		default:
+			ctx.Error("not found", fasthttp.StatusNotFound)
+		}
+	}
+
+	port := ":" + httpPort
+
+	if err := fasthttp.ListenAndServe(port, m); err != nil {
+		log.Fatalf("http server ListenAndServe fail: %s", err)
 	}
 }

@@ -17,10 +17,10 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway v1.14.5 // indirect
 	github.com/json-iterator/go v1.1.12
+	github.com/valyala/fasthttp v1.32.0
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
-	golang.org/x/text v0.3.5 // indirect
 	golang.org/x/tools v0.1.5 // indirect
 	google.golang.org/grpc v1.26.0
 	google.golang.org/protobuf v1.26.0-rc.1 // indirect
