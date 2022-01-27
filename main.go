@@ -12,11 +12,10 @@ import (
 	"strings"
 	"syscall"
 
-	jsoniter "github.com/json-iterator/go"
-	"github.com/valyala/fasthttp"
-
 	"github.com/Enan01/easyid/api"
 
+	jsoniter "github.com/json-iterator/go"
+	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
 )
 
