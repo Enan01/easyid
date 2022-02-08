@@ -19,8 +19,8 @@ const (
 	MasterNodeEtcdPrefix = "/easyid/node/master" // %d should be format to `Node.Index`
 )
 
-var ThisMasterNode *Node                // 当前 master 节点
-var AllMasterNodes = make(map[int]Node) // key: node index, val: node value json
+var ThisMasterNode *Node                 // 当前 master 节点
+var AllMasterNodes = make(map[int]*Node) // key: node index, val: node value json
 
 type Node struct {
 	ID    string `json:"id,omitempty"`
@@ -175,7 +175,7 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 		for _, kv := range getResp.Kvs {
 			nodeIns := Node{}
 			_ = jsoniter.Unmarshal(kv.Value, &nodeIns)
-			AllMasterNodes[nodeIns.Index] = nodeIns
+			AllMasterNodes[nodeIns.Index] = &nodeIns
 		}
 		log.Printf("当前值：%v", AllMasterNodes)
 	}
@@ -192,7 +192,7 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 				nodeIns := Node{}
 				_ = jsoniter.Unmarshal(vbs, &nodeIns)
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} PUT: %s", n.Index, n.ID, string(kbs), string(vbs))
-				AllMasterNodes[nodeIns.Index] = nodeIns
+				AllMasterNodes[nodeIns.Index] = &nodeIns
 				n.ReleaseGrpcClientConns(ctx)
 			case mvccpb.DELETE:
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} DELETE", n.Index, n.ID, string(kbs))
