@@ -6,21 +6,21 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	jsoniter "github.com/json-iterator/go"
-
-	"github.com/coreos/etcd/clientv3"
+	"google.golang.org/grpc"
 )
 
 const (
 	MasterNodeEtcdPrefix = "/easyid/node/master" // %d should be format to `Node.Index`
 )
 
+var ThisMasterNode *Node                // 当前 master 节点
 var AllMasterNodes = make(map[int]Node) // key: node index, val: node value json
-
-// TODO 每个 node 会维护其他 node 的 client 连接池
 
 type Node struct {
 	ID    string `json:"id,omitempty"`
@@ -38,20 +38,24 @@ type Node struct {
 	meta      map[string]interface{} `json:"-"`
 	etcdCli   *clientv3.Client       `json:"-"`
 	releaseCh chan struct{}          `json:"-"`
+
+	nodeGrpcClientConns     map[int]*grpc.ClientConn `json:"-"` // 其他节点的grpc客户端连接 key 为 node index
+	nodeGrpcClientConnsLock sync.RWMutex
 }
 
 func NewNode(index int, name string, ttl int64, ip string, port string, etcdCli *clientv3.Client) *Node {
 	return &Node{
-		Index:     index,
-		Name:      name,
-		TTL:       ttl,
-		IP:        ip,
-		Port:      port,
-		ID:        UUID(),
-		meta:      make(map[string]interface{}),
-		releaseCh: make(chan struct{}),
-		master:    &AtomicBool{flag: 0},
-		etcdCli:   etcdCli,
+		Index:               index,
+		Name:                name,
+		TTL:                 ttl,
+		IP:                  ip,
+		Port:                port,
+		ID:                  UUID(),
+		meta:                make(map[string]interface{}),
+		releaseCh:           make(chan struct{}),
+		master:              &AtomicBool{flag: 0},
+		etcdCli:             etcdCli,
+		nodeGrpcClientConns: make(map[int]*grpc.ClientConn),
 	}
 }
 
@@ -125,6 +129,7 @@ func (n *Node) campaign0(ctx context.Context) (err error) {
 	}
 
 	log.Printf("节点{index:%d, id:%s} 抢主成功\n", n.Index, n.ID)
+	ThisMasterNode = n
 
 	go func() {
 	LOOP:
@@ -188,11 +193,13 @@ func (n *Node) WatchMaster(ctx context.Context) error {
 				_ = jsoniter.Unmarshal(vbs, &nodeIns)
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} PUT: %s", n.Index, n.ID, string(kbs), string(vbs))
 				AllMasterNodes[nodeIns.Index] = nodeIns
+				n.ReleaseGrpcClientConns(ctx)
 			case mvccpb.DELETE:
 				log.Printf("节点{index:%d, id:%s} 监听到节点{%s} DELETE", n.Index, n.ID, string(kbs))
 				key := string(kbs)
 				index, _ := strconv.Atoi(key[strings.LastIndex(key, "/")+1:])
 				delete(AllMasterNodes, index)
+				n.ReleaseGrpcClientConns(ctx)
 			}
 			log.Printf("当前值：%v", AllMasterNodes)
 		}
@@ -214,4 +221,41 @@ func (n *Node) GetMaster() bool {
 
 func (n *Node) SetMaster(master bool) {
 	n.master.Set(master)
+}
+
+// GetGrpcClientConnByIndex 根据index获取对应节点的 grpc 连接
+func (n *Node) GetGrpcClientConnByIndex(ctx context.Context, idx int) (*grpc.ClientConn, error) {
+	n.nodeGrpcClientConnsLock.RLock()
+	conn := n.nodeGrpcClientConns[idx]
+	n.nodeGrpcClientConnsLock.RUnlock()
+	if conn != nil {
+		return conn, nil
+	}
+
+	log.Printf("节点{index:%d, id:%s} 获取 grpc 连接，节点{index: %d} grpc 连接不存在触发创建", n.Index, n.ID, idx)
+	n.nodeGrpcClientConnsLock.Lock()
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", AllMasterNodes[idx].IP, AllMasterNodes[idx].Port), grpc.WithInsecure())
+	if err != nil {
+		n.nodeGrpcClientConnsLock.Unlock()
+		return nil, err
+	}
+	n.nodeGrpcClientConns[idx] = conn
+	n.nodeGrpcClientConnsLock.Unlock()
+	return conn, nil
+}
+
+// ReleaseGrpcClientConns 释放当前节点维护的所有其他节点的 grpc 连接
+func (n *Node) ReleaseGrpcClientConns(ctx context.Context) {
+	log.Printf("节点{index:%d, id:%s} 释放 grpc 连接", n.Index, n.ID)
+	n.nodeGrpcClientConnsLock.RLock()
+	grpcClientConns := n.nodeGrpcClientConns
+	n.nodeGrpcClientConnsLock.RUnlock()
+
+	n.nodeGrpcClientConnsLock.Lock()
+	n.nodeGrpcClientConns = make(map[int]*grpc.ClientConn)
+	n.nodeGrpcClientConnsLock.Unlock()
+
+	for _, conn := range grpcClientConns {
+		conn.Close()
+	}
 }

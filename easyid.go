@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -9,9 +10,9 @@ import (
 	"time"
 
 	"github.com/Enan01/easyid/api"
-
-	"google.golang.org/grpc"
 )
+
+// TODO 从节点支持接收 http 请求，并通过 grpc 调用主节点获取id
 
 const IDInterval = 1000
 const UserIDKey = "/easyid/userid/%d"
@@ -103,6 +104,10 @@ func (gs *UserIDGenerators) GetByUserId(ctx context.Context, userId uint64) *Use
 }
 
 func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, error) {
+	if ThisMasterNode == nil {
+		return nil, errors.New("this node is not a master node")
+	}
+
 	res := make(map[uint64]uint64, len(userIds))
 	var (
 		uidGroup0 []uint64
@@ -135,11 +140,10 @@ func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, er
 			}
 		} else { // rpc获取
 			log.Printf("节点[%d] 用户id[%v]rpc获取", ni, userIds)
-			conn, err := grpc.Dial(fmt.Sprintf("%s:%s", AllMasterNodes[ni].IP, AllMasterNodes[ni].Port), grpc.WithInsecure())
+			conn, err := ThisMasterNode.GetGrpcClientConnByIndex(ctx, ni)
 			if err != nil {
 				return nil, err
 			}
-			defer conn.Close()
 			c := api.NewIdGeneratorClient(conn)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
