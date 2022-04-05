@@ -105,8 +105,27 @@ func (gs *UserIDGenerators) GetByUserId(ctx context.Context, userId uint64) *Use
 
 func NextByUserIds(ctx context.Context, userIds []uint64) (map[uint64]uint64, error) {
 	if ThisMasterNode == nil {
-		return nil, errors.New("this node is not a master node")
+		masterOfThisNode := AllMasterNodes[ThisNode.Index]
+		if masterOfThisNode != nil {
+			log.Printf("从节点[%d]转发请求到主节点", ThisNode.Index)
+			conn, err := ThisNode.GetGrpcClientConnByIndex(ctx, ThisNode.Index)
+			if err != nil {
+				return nil, err
+			}
+			c := api.NewIdGeneratorClient(conn)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			r, err := c.SlaveNextByUserIds(ctx, &api.UserIds{UserIds: userIds})
+			if err != nil {
+				return nil, err
+			}
+			ids := r.GetIds()
+			return ids, nil
+		}
+		return nil, errors.New("this node has no master node")
 	}
+
+	// TODO 不是主节点将请求转发至主节点
 
 	res := make(map[uint64]uint64, len(userIds))
 	var (

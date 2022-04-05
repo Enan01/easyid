@@ -7,6 +7,7 @@ option go_package = "./api";
 service IdGenerator {
     rpc Next(UserId) returns (ID) {}
     rpc NextByUserIds(UserIds) returns (IDs) {}
+    rpc SlaveNextByUserIds(UserIds) returns (IDs) {}
 }
 
 message UserId {

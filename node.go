@@ -19,6 +19,7 @@ const (
 	MasterNodeEtcdPrefix = "/easyid/node/master" // %d should be format to `Node.Index`
 )
 
+var ThisNode *Node                       // 当前节点
 var ThisMasterNode *Node                 // 当前 master 节点
 var AllMasterNodes = make(map[int]*Node) // key: node index, val: node value json
 
@@ -60,6 +61,7 @@ func NewNode(index int, name string, ttl int64, ip string, port string, etcdCli 
 }
 
 func (n *Node) Register(ctx context.Context) error {
+	ThisNode = n
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		for {

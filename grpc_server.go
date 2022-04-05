@@ -38,3 +38,12 @@ func (s *GrpcServer) NextByUserIds(ctx context.Context, in *api.UserIds) (*api.I
 
 	return ids, nil
 }
+
+func (s *GrpcServer) SlaveNextByUserIds(ctx context.Context, in *api.UserIds) (*api.IDs, error) {
+	log.Printf("GRPC slave 节点请求 批量获取 用户ID[%v]", in.GetUserIds())
+	ids, err := NextByUserIds(ctx, in.GetUserIds())
+	if err != nil {
+		return nil, err
+	}
+	return &api.IDs{Ids: ids}, nil
+}
